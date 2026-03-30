@@ -19,3 +19,25 @@ git clone https://github.com/aron0628/aron-claude-skills.git /원하는/경로 &
 | 스킬 | 설명 |
 |------|------|
 | `obsidian-doc` | 대화 내용을 옵시디언 마크다운 문서로 생성 |
+
+## Customization
+
+각 스킬의 `SKILL.md`를 수정하여 개인 환경에 맞게 커스터마이징할 수 있습니다.
+
+### obsidian-doc 예시
+
+`obsidian-doc/SKILL.md`에서 옵시디언 경로와 하위 폴더를 변경:
+
+```markdown
+## 저장 경로
+
+기본 경로: `/Users/aron/Library/Mobile Documents/iCloud~md~obsidian/Documents`  ← 본인 옵시디언 경로로 변경
+
+### 문서 유형별 하위 경로
+
+| 유형 | 경로 | 설명 |
+|------|------|------|
+| 개발 계획 | `01. Projects/` | ← 원하는 폴더로 변경 |
+| 기술 문서 | `01. Docs/` | ← 원하는 폴더로 변경 |
+| 회의/분석 | `00. Inbox/` | ← 원하는 폴더로 변경 |
+```
