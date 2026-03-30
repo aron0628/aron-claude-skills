@@ -26,8 +26,14 @@ level: 3
 **자동 실행 단계**:
 
 ```
+Phase 0: 원본 브랜치 복귀
+  ├─ .svn-flow-origin 파일 확인 → 원본 브랜치 URL 읽기
+  │   없으면 → 사용자에게 원본 브랜치 질문
+  ├─ svn switch <원본 브랜치 URL> → 원본 브랜치로 이동
+  └─ 현재 위치 확인 출력
+
 Phase 1: 사전 점검
-  ├─ svn info → 현재 위치 확인 (trunk 여부)
+  ├─ svn info → 현재 위치 확인 (원본 브랜치인지 검증)
   ├─ svn status → 미커밋 변경 있으면 경고 + 처리 방법 제안
   │   ├─ 커밋 먼저? → svn-commit 호출
   │   ├─ 되돌리기? → svn revert 확인
@@ -35,9 +41,9 @@ Phase 1: 사전 점검
   └─ svn mergeinfo → 미머지 리비전 확인 + 요약
 
 Phase 2: 머지 실행
-  ├─ svn merge --dry-run → 충돌 사전 검사 결과 표시
+  ├─ svn merge --dry-run ^/<feature-branch> → 충돌 사전 검사 결과 표시
   ├─ 사용자 확인 ("진행하시겠습니까?")
-  └─ svn merge 실행
+  └─ svn merge ^/<feature-branch> 실행
 
 Phase 3: 충돌 해결 (충돌 있을 때만)
   ├─ 충돌 파일별 분석 (양쪽 커밋 히스토리 기반)
@@ -55,21 +61,23 @@ Phase 5: 완료
   └─ 최종 결과 요약 (커밋 리비전, 변경 파일 수, 해결된 충돌 수)
 ```
 
-### sync — Trunk 동기화
+### sync — 원본 브랜치 동기화
 
 ```
 /svn-flow sync
 ```
 
-브랜치에서 trunk 최신 변경사항을 가져옵니다:
+현재 feature 브랜치에 원본 브랜치의 최신 변경사항을 가져옵니다:
 
 ```
 1. 현재 브랜치 확인
-2. svn mergeinfo → trunk에서 미반영 리비전 조회
-3. dry-run → 결과 표시
-4. 사용자 확인 → 머지 실행
-5. 충돌 해결 (있을 때만)
-6. 동기화 커밋
+2. .svn-flow-origin → 원본 브랜치 URL 읽기
+   없으면 → 사용자에게 동기화 소스 브랜치 질문
+3. svn mergeinfo → 원본 브랜치에서 미반영 리비전 조회
+4. dry-run → 결과 표시
+5. 사용자 확인 → 머지 실행
+6. 충돌 해결 (있을 때만)
+7. 동기화 커밋
 ```
 
 ### cherry-pick — 선택적 리비전 적용
@@ -93,12 +101,23 @@ Phase 5: 완료
 /svn-flow branch feature-xyz
 ```
 
+**현재 브랜치를 기준으로** 새 브랜치를 생성합니다. trunk뿐 아니라 어떤 브랜치에서든 동작합니다.
+
 ```
-1. svn info → trunk/branches/tags 구조 자동 감지
-2. svn copy ^/trunk ^/branches/feature-xyz -m "브랜치 생성"
-3. svn switch ^/branches/feature-xyz
-4. 결과 확인
+1. svn info → 현재 working copy의 URL을 "원본 브랜치"로 기록
+   예: ^/branches/erp_v7.0/sunnyyk.erp.web
+2. 원본 브랜치의 상위 경로에 새 브랜치 생성
+   svn copy ^/branches/erp_v7.0/sunnyyk.erp.web
+            ^/branches/erp_v7.0/feature-xyz
+            -m "브랜치 생성: feature-xyz (from sunnyyk.erp.web)"
+3. svn switch ^/branches/erp_v7.0/feature-xyz
+4. 원본 브랜치 URL을 기억 (merge 시 복귀 대상으로 사용)
 ```
+
+**원본 브랜치 추적**:
+- branch 생성 시 `svn info`에서 얻은 현재 URL을 working copy 루트의 `.svn-flow-origin` 파일에 기록
+- 이후 `/svn-flow merge`에서 이 파일을 읽어 원본 브랜치로 자동 복귀
+- 파일이 없으면 사용자에게 원본 브랜치를 질문
 
 ### commit — 스마트 커밋 (단독)
 
@@ -133,8 +152,8 @@ Phase 5: 완료
 
 | 인자 | 설명 |
 |------|------|
-| `merge [branch]` | 브랜치 → trunk 전체 머지 |
-| `sync` | trunk → 브랜치 동기화 |
+| `merge [branch]` | feature 브랜치 → 원본 브랜치로 복귀 후 머지 |
+| `sync` | 원본 브랜치 → 현재 브랜치 동기화 |
 | `cherry-pick rN` | 특정 리비전 선택 적용 |
 | `branch name` | 브랜치 생성 + 전환 |
 | `commit` | 현재 변경사항 스마트 커밋 |
