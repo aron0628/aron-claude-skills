@@ -4,6 +4,8 @@ Claude Code 커스텀 스킬 저장소.
 
 ## Setup
 
+### macOS / Linux
+
 ```bash
 git clone https://github.com/aron0628/aron-claude-skills.git ~/aron-claude-skills && ~/aron-claude-skills/setup.sh
 ```
@@ -13,6 +15,20 @@ git clone https://github.com/aron0628/aron-claude-skills.git ~/aron-claude-skill
 ```bash
 git clone https://github.com/aron0628/aron-claude-skills.git /원하는/경로 && /원하는/경로/setup.sh
 ```
+
+### Windows
+
+```cmd
+git clone https://github.com/aron0628/aron-claude-skills.git %USERPROFILE%\aron-claude-skills && %USERPROFILE%\aron-claude-skills\setup.bat
+```
+
+다른 경로에 저장하려면:
+
+```cmd
+git clone https://github.com/aron0628/aron-claude-skills.git C:\원하는\경로 && C:\원하는\경로\setup.bat
+```
+
+> **Note:** `setup.bat`은 Junction(`mklink /J`)을 사용합니다. 관리자 권한 없이 실행 가능합니다.
 
 ## Skills
 
