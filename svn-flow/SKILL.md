@@ -57,8 +57,14 @@ Phase 4: 커밋
   ├─ 사용자 확인/수정
   └─ svn commit 실행
 
-Phase 5: 완료
-  └─ 최종 결과 요약 (커밋 리비전, 변경 파일 수, 해결된 충돌 수)
+Phase 5: 브랜치 정리
+  ├─ 사용자 확인 ("머지된 feature 브랜치를 삭제하시겠습니까?")
+  │   ├─ Yes → svn delete ^/<feature-branch> -m "브랜치 삭제: <branch-name>"
+  │   └─ No → 유지 (나중에 수동 삭제 가능)
+  └─ .svn-flow-origin 파일 삭제
+
+Phase 6: 완료
+  └─ 최종 결과 요약 (커밋 리비전, 변경 파일 수, 해결된 충돌 수, 브랜치 삭제 여부)
 ```
 
 ### sync — 원본 브랜치 동기화
