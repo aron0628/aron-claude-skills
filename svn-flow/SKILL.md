@@ -1,0 +1,162 @@
+---
+name: svn-flow
+description: SVN 원스톱 워크플로우. status→merge→충돌해결→commit을 자동 연결. merge/sync/cherry-pick/branch 지원.
+trigger: "svn flow"
+user-invocable: true
+level: 3
+---
+
+# SVN Flow
+
+개별 SVN 스킬(status, merge, commit 등)을 하나의 워크플로우로 자동 연결합니다. 사용자는 중간중간 확인/승인만 하면 됩니다.
+
+## 트리거
+
+다음 문구가 포함되면 이 스킬을 자동 호출:
+- "svn flow"
+
+## 워크플로우 모드
+
+### merge — 브랜치 머지 전체 흐름
+
+```
+/svn-flow merge [branch-name]
+```
+
+**자동 실행 단계**:
+
+```
+Phase 1: 사전 점검
+  ├─ svn info → 현재 위치 확인 (trunk 여부)
+  ├─ svn status → 미커밋 변경 있으면 경고 + 처리 방법 제안
+  │   ├─ 커밋 먼저? → svn-commit 호출
+  │   ├─ 되돌리기? → svn revert 확인
+  │   └─ 무시하고 진행? → 사용자 확인 후 계속
+  └─ svn mergeinfo → 미머지 리비전 확인 + 요약
+
+Phase 2: 머지 실행
+  ├─ svn merge --dry-run → 충돌 사전 검사 결과 표시
+  ├─ 사용자 확인 ("진행하시겠습니까?")
+  └─ svn merge 실행
+
+Phase 3: 충돌 해결 (충돌 있을 때만)
+  ├─ 충돌 파일별 분석 (양쪽 커밋 히스토리 기반)
+  ├─ 자동 해결 가능 → 자동 처리 (한쪽만 변경된 경우)
+  ├─ 수동 필요 → 파일별 해결 제안 + 사용자 선택
+  └─ svn resolved 실행
+
+Phase 4: 커밋
+  ├─ 머지 결과 diff 요약
+  ├─ 커밋 메시지 자동 생성 (머지 리비전 범위 포함)
+  ├─ 사용자 확인/수정
+  └─ svn commit 실행
+
+Phase 5: 완료
+  └─ 최종 결과 요약 (커밋 리비전, 변경 파일 수, 해결된 충돌 수)
+```
+
+### sync — Trunk 동기화
+
+```
+/svn-flow sync
+```
+
+브랜치에서 trunk 최신 변경사항을 가져옵니다:
+
+```
+1. 현재 브랜치 확인
+2. svn mergeinfo → trunk에서 미반영 리비전 조회
+3. dry-run → 결과 표시
+4. 사용자 확인 → 머지 실행
+5. 충돌 해결 (있을 때만)
+6. 동기화 커밋
+```
+
+### cherry-pick — 선택적 리비전 적용
+
+```
+/svn-flow cherry-pick r1245
+/svn-flow cherry-pick r1240:r1247
+```
+
+```
+1. 대상 리비전 변경 내용 요약 표시
+2. 소스 URL 자동 추론
+3. dry-run → 사용자 확인 → 적용
+4. 충돌 해결 (있을 때만)
+5. 커밋 (cherry-pick 리비전 기록)
+```
+
+### branch — 브랜치 생성 + 전환
+
+```
+/svn-flow branch feature-xyz
+```
+
+```
+1. svn info → trunk/branches/tags 구조 자동 감지
+2. svn copy ^/trunk ^/branches/feature-xyz -m "브랜치 생성"
+3. svn switch ^/branches/feature-xyz
+4. 결과 확인
+```
+
+### commit — 스마트 커밋 (단독)
+
+```
+/svn-flow commit
+```
+
+머지 없이 현재 변경사항만 커밋:
+
+```
+1. svn status → 변경 파일 분류 + 요약
+2. svn diff → 변경 내용 분석
+3. 커밋 메시지 자동 생성
+4. 파일 선택 (전체 or 부분)
+5. 사용자 확인 → svn commit
+```
+
+## 사용자 개입 지점
+
+각 Phase 사이에서 사용자에게 확인을 요청:
+
+| 지점 | 질문 | 기본값 |
+|------|------|--------|
+| 미커밋 변경 발견 | 어떻게 처리? (커밋/되돌리기/무시) | 경고만 |
+| dry-run 완료 | 머지 진행? | Yes |
+| 충돌 파일별 | 어떤 쪽 채택? | AI 권장안 |
+| 커밋 메시지 | 확인/수정? | 자동 생성 메시지 |
+
+`--auto` 옵션 시 자동 해결 가능한 항목은 확인 없이 진행.
+
+## 옵션
+
+| 인자 | 설명 |
+|------|------|
+| `merge [branch]` | 브랜치 → trunk 전체 머지 |
+| `sync` | trunk → 브랜치 동기화 |
+| `cherry-pick rN` | 특정 리비전 선택 적용 |
+| `branch name` | 브랜치 생성 + 전환 |
+| `commit` | 현재 변경사항 스마트 커밋 |
+| `--auto` | 자동 해결 가능 항목 자동 진행 |
+| `--dry-run` | 전체 흐름을 시뮬레이션만 (실행 없음) |
+
+## 스킬 연동
+
+flow는 내부적으로 개별 스킬의 로직을 순차 호출:
+
+```
+svn-flow
+  ├── svn-status (Phase 1)
+  ├── svn-merge (Phase 2-3)
+  ├── svn-blame (충돌 분석 시)
+  ├── svn-log (커밋 히스토리 참조 시)
+  └── svn-commit (Phase 4)
+```
+
+## 주의사항
+
+- SVN 커밋은 즉시 서버에 반영됨 — 커밋 Phase에서 반드시 사용자 확인
+- 네트워크 에러 발생 시 현재 Phase 표시 + 재시도 안내
+- 대규모 머지(파일 50개 이상) 시 단계별로 끊어서 진행
+- working copy 상태가 비정상(locked 등)이면 `svn cleanup` 먼저 제안
