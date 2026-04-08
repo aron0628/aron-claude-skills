@@ -1,0 +1,88 @@
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
+<%@ include file="/WEB-INF/jsp/common/auiHeader.jsp" %>
+<!-- ${description} (팝업) -->
+<div class="popup-wrap width-100per">
+
+	<!-- 검색 영역 -->
+	<div class="search-wrap">
+		<div class="search-inner">
+			<table class="search-tbl">
+				<colgroup>
+					<col width="80px">
+					<col width="">
+				</colgroup>
+				<tr>
+					<!-- TODO: 검색 조건 추가 -->
+					<th>검색</th>
+					<td>
+						<input type="text" name="s_keyword" class="input-text" />
+					</td>
+				</tr>
+			</table>
+		</div>
+	</div>
+
+	<!-- 그리드 영역 -->
+	<div class="grid-wrap">
+		<div class="grid-header">
+			<span class="grid-count">총 <strong id="totalCnt">0</strong>건</span>
+		</div>
+		<div id="auiGrid" style="width:100%;"></div>
+	</div>
+
+</div>
+
+<!-- 부모 창에 전달할 hidden 필드 -->
+<!-- TODO: 필요한 hidden input 추가 -->
+<!-- <input type="hidden" name="parent_js_name" value="${inputParam.parent_js_name}" /> -->
+
+<script type="text/javascript">
+(function () {
+
+	// ========== 그리드 설정 ==========
+	var myGrid;
+
+	var columnLayout = [
+		// TODO: 컬럼 레이아웃 정의
+		// { dataField: "column_name", headerText: "컬럼명", width: 120 },
+	];
+
+	var gridProps = {
+		headerHeight: 30,
+		rowHeight: 28,
+		showRowNumColumn: true,
+		showRowCheckColumn: false,
+		editable: false,
+		selectionMode: "singleRow",
+		noDataMessage: "데이터가 없습니다.",
+	};
+
+	function createAUIGrid() {
+		myGrid = AUIGrid.create("#auiGrid", columnLayout, gridProps);
+
+		AUIGrid.bind(myGrid, "cellClick", function (event) {
+			// 부모 창 콜백 호출 후 팝업 닫기
+			var parentJsName = $M.getValue("parent_js_name");
+			if (parentJsName && opener && opener[parentJsName]) {
+				opener[parentJsName](event.item);
+			}
+			window.close();
+		});
+	}
+
+	// ========== 조회 ==========
+	function goSearch() {
+		$M.goNextPageAjax("/${domain_lower}/${domain_lower}${menu}/popupSearch", function (data) {
+			AUIGrid.setGridData(myGrid, data.list);
+			$M.setValue("totalCnt", data.total_cnt);
+		});
+	}
+
+	// ========== 초기화 ==========
+	$(function () {
+		createAUIGrid();
+		goSearch();
+	});
+
+})();
+</script>

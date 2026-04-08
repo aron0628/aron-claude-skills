@@ -1,0 +1,137 @@
+# ykdev 정적 분석 규칙 — Step 5 검증에서 자동 실행
+# ast-grep 및 Grep 기반 패턴 탐지 규칙 정의
+
+rules:
+
+  # ============================================================
+  # SEC: 보안 — SQL 인젝션 탐지
+  # ============================================================
+  - id: SEC-01-string-concat-sql
+    severity: CRITICAL
+    description: "SQL 문자열 결합 탐지 — PreparedWhereMaker 바인드 변수 사용 필수"
+    tool: grep
+    patterns:
+      # Service/Impl 파일에서 SQL 문자열 결합 패턴 탐지
+      - pattern: '"\s*\+\s*(?:param|map|req|dataSet|get\w+)\b'
+        glob: "**/*ServiceImpl.java"
+        description: "SQL에 변수를 문자열 결합으로 삽입 (+ param/map/req)"
+      - pattern: 'appendWithCR\s*\(\s*"[^"]*"\s*\+\s*[^,)]'
+        glob: "**/*ServiceImpl.java"
+        description: "appendWithCR에 문자열 결합 사용"
+    fix_hint: "pwm.appendWithCR(\"... = ? \", value) 형태로 바인드 변수 사용"
+
+  # ============================================================
+  # COD-06A: JSP script 내 EL 표현식 금지
+  # ============================================================
+  - id: COD-06A-el-in-script
+    severity: CRITICAL
+    description: "JSP <script> 영역에서 ${item.xxx} EL 표현식 사용 금지"
+    tool: grep
+    patterns:
+      - pattern: '<script[^>]*>[\s\S]*?\$\{(?:item|row|data|param)\.\w+\}'
+        glob: "**/*.jsp"
+        multiline: true
+        description: "script 태그 내에서 EL 표현식으로 폼 필드 값 참조"
+    fix_hint: "hidden input에 EL 값을 넣고, JS에서 $M.getValue()로 참조"
+
+  # ============================================================
+  # COD-18~20: Ajax 통신 패턴
+  # ============================================================
+  - id: COD-18-raw-ajax
+    severity: HIGH
+    description: "$.ajax / $.get / $.post 직접 사용 금지 — $M.goNextPageAjax() 계열 사용"
+    tool: grep
+    patterns:
+      - pattern: '\$\.(ajax|get|post|getJSON)\s*\('
+        glob: "**/*.jsp"
+        description: "jQuery 직접 Ajax 호출"
+    fix_hint: "$M.goNextPageAjax() 또는 $M.goNextPageAjaxPost() 사용"
+
+  # ============================================================
+  # COD-26~27: JSP include 패턴
+  # ============================================================
+  - id: COD-26-wrong-header
+    severity: HIGH
+    description: "신규 JSP에서 header.jsp/commonForAll.jsp 사용 금지 — auiHeader.jsp 사용"
+    tool: grep
+    patterns:
+      - pattern: 'include\s+file\s*=\s*"[^"]*(?:header\.jsp|commonForAll\.jsp)"'
+        glob: "**/*.jsp"
+        description: "잘못된 공통 JSP include"
+    fix_hint: '<%@ include file="/WEB-INF/jsp/common/auiHeader.jsp" %>'
+    note: "기존 파일은 제외 — 변경된 파일만 검사"
+
+  # ============================================================
+  # COD-28: 그리드 데이터 저장 패턴
+  # ============================================================
+  - id: COD-28-manual-grid-join
+    severity: HIGH
+    description: "그리드 데이터 수동 #join/split 금지 — fnChangeGridDataToForm 패턴 사용"
+    tool: grep
+    patterns:
+      - pattern: '\.split\s*\(\s*"#"\s*\)'
+        glob: "**/*ServiceImpl.java"
+        description: "Service에서 # 구분자 수동 split"
+      - pattern: '\.join\s*\(\s*"#"\s*\)'
+        glob: "**/*.jsp"
+        description: "JSP에서 # 구분자 수동 join"
+    fix_hint: "JSP: fnChangeGridDataToForm/fnGridDataToForm, Service: BeanUtil.createListOfBean"
+
+  # ============================================================
+  # DB-05: use_yn 조건 패턴
+  # ============================================================
+  - id: DB-05-use-yn-pattern
+    severity: HIGH
+    description: "use_yn 조건에 = 'Y' 대신 <> 'N' 패턴 사용"
+    tool: grep
+    patterns:
+      - pattern: "use_yn\\s*=\\s*['\"]Y['\"]"
+        glob: "**/*ServiceImpl.java"
+        description: "use_yn = 'Y' 사용 (잠재적 데이터 누락)"
+    fix_hint: "use_yn <> 'N' 패턴 사용 (NULL 데이터도 포함)"
+
+  # ============================================================
+  # FRM: 프레임워크 금지 파일 수정 탐지
+  # ============================================================
+  - id: FRM-01-10-forbidden-files
+    severity: CRITICAL
+    description: "프레임워크 금지 파일 수정 여부 확인"
+    tool: svn_status
+    forbidden_paths:
+      - "mobile/factory/"
+      - "BeanObject.java"
+      - "RequestDataSet.java"
+      - "WEB-INF/jsp/common/"
+      - "db.column.js"
+      - "style.css"
+      - "AUIGrid.extend.js"
+      - "jquery.mfactory"
+    description: "svn status 결과에서 금지 파일 변경 여부 검사"
+
+  # ============================================================
+  # COD-01: Controller 패턴 검증
+  # ============================================================
+  - id: COD-01-controller-pattern
+    severity: HIGH
+    description: "Controller가 RequestDataSet + ResponseUtil 패턴을 따르는지 확인"
+    tool: grep
+    patterns:
+      - pattern: 'HttpServletRequest\s+\w+'
+        glob: "**/*Controller.java"
+        description: "Controller에서 HttpServletRequest 직접 사용 (RequestDataSet 대신)"
+    fix_hint: "RequestDataSet dataSet 파라미터 사용"
+
+  # ============================================================
+  # 영향 범위 교차 검증
+  # ============================================================
+  - id: IMPACT-CROSS-CHECK
+    severity: MEDIUM
+    description: "01-analysis.md 영향도 vs 실제 변경 파일 교차 검증"
+    tool: custom
+    logic: |
+      1. 01-analysis.md에서 식별된 파일 목록 추출
+      2. svn status (또는 실제 변경 파일 목록) 추출
+      3. diff:
+         - 분석에서 예측했지만 미변경 파일 → WARNING: "예측 파일 미변경"
+         - 예측 못 했지만 변경된 파일 → WARNING: "비예측 파일 변경"
+      4. 결과를 04-verify.md에 기록

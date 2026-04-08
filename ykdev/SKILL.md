@@ -34,6 +34,9 @@ obsidian_base: "/Users/aron/Library/Mobile Documents/iCloud~md~obsidian/Document
 omc_plans: ".omc/plans"
 build_cmd: "./gradlew compileGroovy"
 test_cmd: "./gradlew test"
+templates_dir: "~/.claude/skills/ykdev/templates"
+metrics_file: "{obsidian_base}/_metrics.md"
+static_analysis_rules: "~/.claude/skills/ykdev/templates/static-analysis-rules.yml"
 
 domains:
   acnt: 회계
@@ -56,6 +59,13 @@ naming:
   jsp: "{domain}{menu}.jsp"
   jsp_popup: "{domain}{menu}p{seq}.jsp"
   entity: "Bean{TableName}"
+
+templates:
+  controller: "templates/controller.java.tmpl"
+  service_impl: "templates/service-impl.java.tmpl"
+  service_interface: "templates/service-interface.java.tmpl"
+  jsp_grid: "templates/jsp-grid.jsp.tmpl"
+  jsp_popup: "templates/jsp-popup.jsp.tmpl"
 </Configuration>
 
 <Steps>
@@ -75,7 +85,12 @@ naming:
    - DB 작업: REF-01, REF-03
    - 풀스택(백엔드+프론트엔드): REF-01~07 전부
    REF 문서는 `<ref-documents>` 태그로 서브에이전트 프롬프트에 주입
-4. 기능 폴더 결정 (3뎁스 기준 분리):
+4. **메트릭 & 자동 튜닝 로드 (메인 오케스트레이터가 직접 수행)**:
+   - `{obsidian_base}/_metrics.md`가 존재하면 Read
+   - "자동 튜닝 현황" 섹션에서 **강조 주입 대상 규칙**을 추출하여 `${TUNING_RULES}`에 보관
+   - 이후 executor/code-reviewer 프롬프트에 `<tuning-emphasis>` 태그로 주입
+   - 파일 미존재 시 `templates/metrics.md.tmpl` 기반으로 초기 생성
+5. 기능 폴더 결정 (3뎁스 기준 분리):
    PDF/이미지 문서의 헤더에서 **3뎁스(x.x.x) 번호**를 기능 분리 기준으로 사용한다.
    - 문서 헤더 형식: `{1뎁스}. {모듈} > {1뎁스}.{2뎁스}.{3뎁스} {분류} > {기능명}`
      예: `2. 렌탈 > 2.3.1 기능개선 > 렌탈기준정보-어태치먼트`
@@ -86,8 +101,8 @@ naming:
    - 폴더명 형식: `{3뎁스번호}-{기능명}` (예: `2.3.1-렌탈기준정보-어태치먼트`)
    - 텍스트 요구사항(PDF 없음)이면: `{YYYYMMDD}-{기능명}` (예: `20260403-장착옵션추가`)
    - `--all` 옵션 시: PDF 전체를 스캔하여 3뎁스 단위로 모든 기능 폴더를 한번에 생성하고 순차 실행
-5. 옵시디언 기능 폴더 생성: `{obsidian_base}/{기능폴더}/` (3뎁스별 각각 생성)
-6. **`00-input.md` 생성** (최초 실행 시): 원본 입력 정보 저장
+6. 옵시디언 기능 폴더 생성: `{obsidian_base}/{기능폴더}/` (3뎁스별 각각 생성)
+7. **`00-input.md` 생성** (최초 실행 시): 원본 입력 정보 저장
    ```markdown
    # 입력 정보
    - 문서: @document_for_dev.pdf
@@ -95,9 +110,9 @@ naming:
    - 기능명: 2.3.2 렌탈장비대장상세-장착옵션
    - 실행일: 2026-04-03
    ```
-7. `--restart` 지정 시 → **재시작 처리** (아래 참조)
-8. `--step` 지정 시 해당 단계만 실행, 미지정 시 전체 파이프라인 실행
-9. `--step X..Y` 형태면 X부터 Y까지 범위 실행
+8. `--restart` 지정 시 → **재시작 처리** (아래 참조)
+9. `--step` 지정 시 해당 단계만 실행, 미지정 시 전체 파이프라인 실행
+10. `--step X..Y` 형태면 X부터 Y까지 범위 실행
 
 ### 0-1. 재시작 (`--restart`)
 
@@ -111,7 +126,7 @@ naming:
 | PDF 재지정 | `ykdev @document_for_dev.pdf 2~3페이지 개발 --restart` | `00-input.md` 덮어쓰기 후 재실행 |
 
 **처리 순서:**
-1. 기능 폴더 내 산출물 삭제 (`01-analysis.md`, `02-plan-draft.md`, `02-plan.md`, `03-review.md`, `04-verify.md`, `05-commit.md`, `summary.md`)
+1. 기능 폴더 내 산출물 삭제 (`01-analysis.md`, `02-plan-draft.md`, `02-plan.md`, `03-review.md`, `04-verify.md`, `05-commit.md`, `summary.md`, `context-chain.md`)
 2. `00-input.md`는 유지 (PDF 재지정 시에만 덮어쓰기)
 3. `.omc/plans/` 내 해당 기능 관련 파일 삭제
 4. `_index.md` 상태를 `📋 Step 1 분석 (restart)`으로 리셋
@@ -122,7 +137,20 @@ naming:
 **에이전트**: `analyst` (opus)
 **산출물**: `{obsidian_base}/{기능폴더}/01-analysis.md`
 
-1. `analyst` 에이전트 호출 (opus):
+1. **과거 구현 검색 (Experience Replay)**:
+   메인 오케스트레이터가 직접 수행한다.
+   - `_index.md`에서 완료된 기능 목록을 읽는다
+   - 현재 기능과 유사한 과거 기능을 검색한다 (도메인 일치, 키워드 유사도):
+     - 같은 도메인의 기능 폴더를 우선 탐색
+     - 기능명에서 핵심 키워드를 추출하여 매칭 (예: "어태치먼트", "팝업", "그리드", "조회", "등록")
+   - 유사 기능이 발견되면 해당 폴더의 `03-review.md`를 읽어 **과거 위반 사항**을 추출:
+     - CRITICAL/HIGH 위반 규칙 ID와 설명
+     - 수정에 걸린 라운드 수
+   - 추출 결과를 `${EXPERIENCE_CONTEXT}`에 보관
+   - 유사 기능의 `02-plan.md`에서 **구현 패턴 요약**도 추출 (어떤 테이블, 어떤 패턴 사용했는지)
+   - 결과를 analyst 프롬프트에 `<experience-replay>` 태그로 주입
+
+2. `analyst` 에이전트 호출 (opus):
 
 ```
 Agent(subagent_type="oh-my-claudecode:analyst", model="opus", prompt="
@@ -135,6 +163,11 @@ ${RULES_CONTENT}
 <ref-documents>
 ${REF_CONTENT}
 </ref-documents>
+
+<experience-replay>
+${EXPERIENCE_CONTEXT}
+(과거 유사 기능의 위반 이력 및 구현 패턴. 없으면 '유사 기능 없음')
+</experience-replay>
 
 ---
 SunnyYK ERP 개발 요구사항을 분석하라.
@@ -156,14 +189,29 @@ SunnyYK ERP 개발 요구사항을 분석하라.
    - DB 테이블/뷰 변경 필요 여부
    - 외부 시스템 연동 여부
 6. 복잡도 판단: 단순/복잡/고위험
+7. 과거 유사 기능 참고사항 (experience-replay 기반)
 
 출력 형식: 마크다운
 ")
 ```
 
-2. 분석 결과를 `01-analysis.md`로 저장
-3. `.omc/plans/`에도 병행 저장
-4. **산출물 자동 검증** (사용자에게 제출 전 자동 실행):
+3. 분석 결과를 `01-analysis.md`로 저장
+4. `.omc/plans/`에도 병행 저장
+5. **컨텍스트 체인 시작**: `context-chain.md` 생성
+
+```markdown
+# 컨텍스트 체인 — {기능명}
+> 각 Step의 핵심 판단/결정을 누적 기록. 다음 Step에 전달.
+
+## Step 1: 분석 (${날짜})
+- 복잡도: {단순/복잡/고위험}
+- 핵심 요구사항: {1~2줄 요약}
+- 주요 영향 파일: {파일 목록}
+- 과거 유사 기능: {있으면 폴더명 + 주의사항}
+- 판단 근거: {왜 이 복잡도로 판단했는지}
+```
+
+6. **산출물 자동 검증** (사용자에게 제출 전 자동 실행):
    - 01-analysis.md를 읽고 아래 규칙을 대조한다. 미통과 시 자동 수정 후 재검증:
    - [ ] NAM-01~04: 추정 파일명이 네이밍 규칙에 맞는가? 신규 팝업이면 **호출 위치 기준**으로 1차(p{seq}) vs 서브팝업(p{부모seq}{자식seq})을 구분했는가? (NAM-03/REF-04)
    - [ ] DB 변경이 식별되었으면 복잡도가 "복잡" 이상으로 판단되었는가?
@@ -197,6 +245,8 @@ SunnyYK ERP 개발 요구사항을 분석하라.
    - CLAUDE.md 코드 패턴 (Controller/Service/JSP 작성법)
    - PreparedWhereMaker 패턴
    - AOP 자동실행 규칙
+   - **과거 유사 기능 경험** (`${EXPERIENCE_CONTEXT}`) — 과거 위반 사항을 계획에 선제 반영
+   - **코드 템플릿 참조 지시**: 신규 파일 생성 시 `templates/` 디렉토리의 템플릿을 기반으로 구현하도록 계획에 명시
    - **planner/architect/critic 에이전트 프롬프트에 규칙 + REF를 직접 주입한다:**
 
 ```
@@ -209,6 +259,10 @@ ${RULES_CONTENT}
 <ref-documents>
 ${REF_CONTENT}
 </ref-documents>
+
+<experience-replay>
+${EXPERIENCE_CONTEXT}
+</experience-replay>
 ```
 
 4. **모드 A (단순)**: `planner` (opus)로 직접 계획
@@ -233,8 +287,21 @@ ${REF_CONTENT}
    - [ ] DB-08: CREATE INDEX에 TABLESPACE YK_ERP_IDX_TS가 명시되었는가?
    - [ ] COD-06A: 계획서 내 코드 스니펫의 `<script>` 영역에서 `${item.xxx}` EL을 사용하지 않았는가? (hidden input + `$M.getValue()` 패턴 사용)
    - [ ] 롤백 계획이 포함되었는가? (변경 파일, DB 롤백 SQL, 롤백 순서, 검증 방법)
+   - [ ] **TMPL-01**: 신규 파일 생성 계획에 사용할 템플릿이 명시되었는가?
 
-8. **사용자 승인 대기** (⏸️ 여기서 반드시 멈춤):
+8. **컨텍스트 체인 업데이트**: `context-chain.md`에 Step 2 기록 추가
+
+```markdown
+## Step 2: 계획 (${날짜})
+- 계획 모드: {단순/합의/deliberate}
+- 작업 항목 수: {N}건 (독립 {M}건, 의존 {K}건)
+- 신규 파일: {목록}
+- DB 변경: {있으면 요약, 없으면 '없음'}
+- 핵심 결정: {아키텍처 결정 또는 설계 판단 1~2줄}
+- 과거 경험 반영: {experience-replay에서 선제 반영한 사항}
+```
+
+9. **사용자 승인 대기** (여기서 반드시 멈춤):
    - 승인 → `02-plan-draft.md`를 `02-plan.md`로 이름 변경, draft 삭제 → Step 3 진행
    - 수정 요청 → 계획 재수립 → `02-plan-draft.md` 덮어쓰기 → 다시 승인 대기
    - 거부 → `02-plan-draft.md` 삭제 → 파이프라인 중단
@@ -245,14 +312,15 @@ ${REF_CONTENT}
 **실행 모드**: `ultrawork` (자동 활성화)
 
 1. `02-plan.md` 로드
-2. 계획의 작업 항목을 독립성 기준으로 분류:
+2. **컨텍스트 체인 로드**: `context-chain.md`를 읽어 이전 Step의 핵심 판단을 확인
+3. 계획의 작업 항목을 독립성 기준으로 분류:
    - **독립 작업**: 서로 다른 파일/모듈을 수정하는 작업 → 병렬 실행
    - **의존 작업**: 이전 작업 결과가 필요한 작업 → 순차 실행
-3. **독립 작업이 2개 이상이면 ultrawork 모드 자동 활성화**:
+4. **독립 작업이 2개 이상이면 ultrawork 모드 자동 활성화**:
    - `docs/shared/agent-tiers.md` 참조하여 작업별 모델 티어 결정
    - 모든 독립 작업을 동시에 Agent 호출 (단일 메시지에서 병렬 발사)
    - 30초 이상 소요 예상 작업은 `run_in_background: true`
-4. 독립 작업이 1개이면 ultrawork 없이 executor 직접 호출
+5. 독립 작업이 1개이면 ultrawork 없이 executor 직접 호출
 
 **모델 티어 라우팅**:
 | 작업 유형 | 모델 | 예시 |
@@ -261,9 +329,21 @@ ${REF_CONTENT}
 | 일반 CRUD, 화면 개발 | sonnet | Controller/JSP/JS 구현 |
 | 단순 설정, SQL 스크립트 | haiku | INSERT 문, 코드 테이블 추가 |
 
+**코드 템플릿 활용**:
+신규 파일 생성 시 `templates/` 디렉토리의 템플릿을 기반으로 시작한다.
+executor 프롬프트에 해당 템플릿 내용을 `<code-template>` 태그로 주입한다.
+
+| 신규 파일 유형 | 템플릿 | 치환 변수 |
+|---------------|--------|-----------|
+| Controller | `templates/controller.java.tmpl` | `${DOMAIN}`, `${MENU}`, `${domain_lower}`, `${menu}` |
+| Service Interface | `templates/service-interface.java.tmpl` | 위와 동일 |
+| ServiceImpl | `templates/service-impl.java.tmpl` | 위와 동일 |
+| JSP (그리드 화면) | `templates/jsp-grid.jsp.tmpl` | `${domain_lower}`, `${menu}` |
+| JSP (팝업) | `templates/jsp-popup.jsp.tmpl` | `${domain_lower}`, `${menu}` |
+
 ```
 # 병렬 실행 예시 — 독립 작업 3건을 동시 발사
-# 모든 executor 프롬프트에 규칙 + REF 내용을 직접 주입한다.
+# 모든 executor 프롬프트에 규칙 + REF + 컨텍스트 체인 + 템플릿 + 자동 튜닝을 주입한다.
 
 Agent(subagent_type="oh-my-claudecode:executor", model="opus", prompt="
 **[필수 규칙 — 아래 규칙을 모두 준수하라. common + executor 섹션 적용]**
@@ -276,26 +356,52 @@ ${RULES_CONTENT}
 ${REF_CONTENT}
 </ref-documents>
 
+<context-chain>
+${CONTEXT_CHAIN_CONTENT}
+(이전 Step의 핵심 판단 — 설계 의도와 이유를 이해하고 따를 것)
+</context-chain>
+
+<code-template>
+(신규 파일 생성 시 아래 템플릿을 기반으로 시작하라. TODO 주석을 실제 구현으로 교체.)
+${TEMPLATE_CONTENT}
+</code-template>
+
+<tuning-emphasis>
+${TUNING_RULES}
+(아래 규칙은 최근 반복 위반된 규칙이다. 특별히 주의하라.)
+</tuning-emphasis>
+
 ---
 [백엔드 구현 작업]
-승인된 계획: [02-plan.md 내용]
+승인된 계획: [02-plan.md 내용 중 해당 작업 슬라이스]
 ")
 
 Agent(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="
-**[필수 규칙 — 위와 동일한 규칙 + REF 주입]**
+**[필수 규칙 — 위와 동일한 규칙 + REF + 컨텍스트 체인 + 템플릿 + 자동 튜닝 주입]**
 ...
 [프론트엔드 구현 작업]
 ...")
 
 Agent(subagent_type="oh-my-claudecode:executor", model="haiku", prompt="
-**[필수 규칙 — 위와 동일한 규칙 + REF 주입]**
+**[필수 규칙 — 위와 동일한 규칙 + REF + 자동 튜닝 주입]**
 ...
 [SQL 스크립트 작업]
 ...")
 ```
 
-5. 모든 executor 완료 대기
-6. **산출물 자동 검증** (코드 리뷰 전 자동 실행):
+6. 모든 executor 완료 대기
+7. **컨텍스트 체인 업데이트**: `context-chain.md`에 Step 3 기록 추가
+
+```markdown
+## Step 3: 개발 (${날짜})
+- 실행 모드: {단일/ultrawork 병렬 N건}
+- 생성 파일: {목록}
+- 수정 파일: {목록}
+- 사용 템플릿: {목록, 없으면 '없음'}
+- 특이사항: {구현 중 발견한 이슈나 계획 변경}
+```
+
+8. **산출물 자동 검증** (코드 리뷰 전 자동 실행):
    - 변경/생성된 파일을 읽고 아래 규칙을 대조한다. 미통과 시 executor가 자동 수정 후 재검증:
    - [ ] SEC-01: SQL에 문자열 결합이 없고 PreparedWhereMaker 바인드 변수만 사용하는가?
    - [ ] COD-01: Controller가 RequestDataSet + ResponseUtil.successResult() 패턴인가?
@@ -330,6 +436,11 @@ ${RULES_CONTENT}
 ${REF_CONTENT}
 </ref-documents>
 
+<tuning-emphasis>
+${TUNING_RULES}
+(아래 규칙은 최근 반복 위반된 규칙이다. 특별히 주의 깊게 검사하라.)
+</tuning-emphasis>
+
 리뷰 체크리스트도 참조하라: ~/.claude/skills/ykdev/templates/review-checklist.md
 
 ---
@@ -352,31 +463,113 @@ ${REF_CONTENT}
    - MEDIUM 이하만 → 권고 기록 후 통과
 
 4. 리뷰 결과를 `03-review.md`로 저장
+5. **컨텍스트 체인 업데이트**: `context-chain.md`에 Step 4 기록 추가
+
+```markdown
+## Step 4: 리뷰 (${날짜})
+- 리뷰 라운드: {N}회
+- CRITICAL: {N}건 (해소 여부)
+- HIGH: {N}건 (해소 여부)
+- MEDIUM: {N}건 (권고)
+- 주요 위반 규칙: {규칙 ID 목록}
+- 판정: PASS / FAIL
+```
 
 ### Step 5: 검증
 
 **에이전트**: `verifier` (sonnet)
 **산출물**: `{obsidian_base}/{기능폴더}/04-verify.md`
 
-1. `verifier` 호출:
+1. **정적 분석 실행** (verifier 호출 전 메인 오케스트레이터가 직접 수행):
+   `templates/static-analysis-rules.yml`의 규칙을 순차 실행한다.
+
+   **5-1. Grep 기반 패턴 탐지** (변경된 파일만 대상):
+   ```
+   # SEC-01: SQL 문자열 결합 탐지
+   Grep(pattern='"\s*\+\s*(?:param|map|req|dataSet|get\w+)', glob="**/*ServiceImpl.java")
+
+   # COD-06A: JSP script 내 EL 표현식
+   Grep(pattern='\$\{(?:item|row|data|param)\.\w+\}', glob="**/*.jsp")
+   → 결과를 <script> 태그 내부인지 확인 (multiline 검사)
+
+   # COD-18: jQuery 직접 Ajax 호출
+   Grep(pattern='\$\.(ajax|get|post|getJSON)\s*\(', glob="**/*.jsp")
+
+   # COD-26: 잘못된 JSP include
+   Grep(pattern='include\s+file\s*=\s*"[^"]*(?:header\.jsp|commonForAll\.jsp)"', glob="**/*.jsp")
+
+   # COD-28: 수동 # join/split
+   Grep(pattern='\.split\s*\(\s*"#"\s*\)', glob="**/*ServiceImpl.java")
+
+   # DB-05: use_yn = 'Y' 패턴
+   Grep(pattern="use_yn\s*=\s*['\"]Y['\"]", glob="**/*ServiceImpl.java")
+   ```
+
+   **5-2. ast-grep 기반 구조 탐지** (가능한 경우):
+   ```
+   # Controller에서 HttpServletRequest 직접 사용 탐지
+   mcp__plugin_oh-my-claudecode_t__ast_grep_search(
+     pattern="public $_ $_(HttpServletRequest $_, $$$) { $$$ }",
+     lang="java"
+   )
+   ```
+
+   **5-3. 프레임워크 금지 파일 수정 검사**:
+   ```
+   # svn status 또는 변경 파일 목록에서 금지 경로 포함 여부 확인
+   금지 경로: mobile/factory/, BeanObject.java, RequestDataSet.java,
+              WEB-INF/jsp/common/, db.column.js, style.css,
+              AUIGrid.extend.js, jquery.mfactory
+   ```
+
+   **5-4. 영향 범위 교차 검증**:
+   ```
+   1. 01-analysis.md에서 "영향 파일" 목록 추출
+   2. 실제 변경 파일 목록 추출
+   3. 교차 검증:
+      - 예측했지만 미변경 → WARNING: "분석 시 예측한 {파일}이 변경되지 않음 — 의도적인지 확인 필요"
+      - 예측 못 했지만 변경 → WARNING: "분석 시 미예측 {파일}이 변경됨 — 영향 범위 재검토 필요"
+   ```
+
+   정적 분석 결과를 `${STATIC_ANALYSIS_RESULT}`에 보관.
+   CRITICAL 발견 시 → Step 3로 회귀하여 수정 후 재검증.
+
+2. `verifier` 호출:
 
 ```
 Agent(subagent_type="oh-my-claudecode:verifier", model="sonnet", prompt="
 변경사항을 검증하라.
 
+<static-analysis-result>
+${STATIC_ANALYSIS_RESULT}
+(메인 오케스트레이터가 사전 실행한 정적 분석 결과)
+</static-analysis-result>
+
 1. 컴파일 확인: ./gradlew compileGroovy
 2. 테스트 통과: ./gradlew test
 3. 변경 파일 목록 최종 확인
 4. 영향 범위 재검증 (01-analysis.md의 영향도와 비교)
+5. 정적 분석 결과 중 WARNING 항목에 대한 판단
 ")
 ```
 
-2. 검증 실패 시:
+3. 검증 실패 시:
    - 컴파일 에러 → Step 3로 돌아가 수정
    - 테스트 실패 → 실패 원인 분석 후 수정
    - 영향 범위 이상 → 사용자에게 알림
+   - 정적 분석 CRITICAL → Step 3로 돌아가 수정
 
-3. 검증 결과를 `04-verify.md`로 저장
+4. 검증 결과를 `04-verify.md`로 저장
+5. **컨텍스트 체인 업데이트**: `context-chain.md`에 Step 5 기록 추가
+
+```markdown
+## Step 5: 검증 (${날짜})
+- 정적 분석: {통과/위반 N건}
+- 컴파일: {PASS/FAIL}
+- 테스트: {PASS/FAIL}
+- 영향 범위 교차 검증: {일치/불일치 N건}
+- 최종 판정: {PASS/FAIL}
+```
 
 ### Step 6: SVN 커밋
 
@@ -407,7 +600,7 @@ Step 5 검증 통과 후 svn-commit 워크플로우를 실행한다.
    → 전체 커밋 (기본)
    → 번호 지정: "1,2,4" — 선택 파일만 커밋
    ```
-7. **⏸️ 사용자 확인 대기** (커밋 메시지 + 파일 목록 승인)
+7. **사용자 확인 대기** (커밋 메시지 + 파일 목록 승인)
    - 승인 → `svn commit` 실행
    - 메시지 수정 요청 → 수정 후 재확인
    - 거부 → 커밋 미실행, 파이프라인 완료 처리
@@ -418,7 +611,20 @@ Step 5 검증 통과 후 svn-commit 워크플로우를 실행한다.
 ### 완료 처리
 
 1. `summary.md` 자동 생성: 전체 프로세스 요약, 최종 변경사항
-2. `_index.md` 업데이트: 기능 상태를 "✅ 완료"로 변경, 완료일 기입
+2. `_index.md` 업데이트: 기능 상태를 "완료"로 변경, 완료일 기입
+3. **메트릭 업데이트**: `_metrics.md`에 이번 파이프라인 결과를 자동 기록
+
+   **기록 항목:**
+   - 기능 폴더명, 완료일
+   - 리뷰 라운드 수 (03-review.md에서 추출)
+   - 위반 규칙 목록 (03-review.md + 04-verify.md에서 추출)
+   - 컴파일/테스트 통과 여부 (04-verify.md에서 추출)
+   - 정적 분석 결과 요약
+
+   **자동 튜닝 업데이트:**
+   - "빈출 위반 규칙 Top 10" 재계산
+   - 동일 규칙이 **최근 3건 연속** 발생하면 "자동 튜닝 현황"에 추가
+   - 3건 연속 미발생이면 "자동 튜닝 현황"에서 제거
 
 ### _index.md 관리
 
@@ -453,9 +659,20 @@ ykdev --archive 7차
 ```
 SunnyYK-ERP/
 ├── _index.md              ← 현재 진행중 + 최근 완료 항목만
+├── _metrics.md            ← 품질 메트릭 누적 기록 (NEW)
 ├── _archive-7차.md        ← 7차 추가개발 완료 이력
 ├── _archive-6차.md        ← 6차 추가개발 완료 이력
 └── {기능폴더들}/
+    ├── 00-input.md        ← 원본 입력 정보
+    ├── 01-analysis.md     ← 문서 분석 결과
+    ├── 02-plan-draft.md   ← 구현 계획 초안 (승인 전)
+    ├── 02-plan.md         ← 구현 계획 (승인 후)
+    ├── 03-review.md       ← 코드 리뷰 결과
+    ├── 04-verify.md       ← 검증 결과
+    ├── 05-commit.md       ← 커밋 결과
+    ├── context-chain.md   ← 컨텍스트 체인 (NEW)
+    ├── summary.md         ← 완료 요약
+    └── ddl/               ← DB 변경 스크립트
 ```
 
 </Steps>
@@ -468,22 +685,41 @@ SunnyYK-ERP/
 - Step 5 실패 시 Step 3으로 회귀.
 - 규칙 주입: **메인 오케스트레이터가 Step 0에서 ykdev-rules.md를 Read하여 전체 내용을 보관**하고, 모든 서브에이전트 프롬프트에 `<ykdev-rules>` 태그로 통째 주입한다. 서브에이전트가 직접 Read하지 않는다.
 - REF 문서: 메인 오케스트레이터가 작업 유형(백엔드/프론트엔드/DB/풀스택)에 따라 필요한 REF를 Read하고, `<ref-documents>` 태그로 서브에이전트 프롬프트에 주입한다.
+- **컨텍스트 체인**: 매 Step 완료 시 `context-chain.md`에 핵심 판단/결정을 누적 기록한다. 다음 Step의 서브에이전트에 `<context-chain>` 태그로 주입하여 이전 판단의 맥락을 전달한다.
+- **코드 템플릿**: 신규 파일 생성 시 `templates/` 디렉토리의 스켈레톤 템플릿을 기반으로 시작한다. executor 프롬프트에 `<code-template>` 태그로 주입한다.
+- **Experience Replay**: Step 1에서 유사 과거 기능을 검색하여 위반 이력과 구현 패턴을 추출하고, 이후 Step에 `<experience-replay>` 태그로 주입한다.
+- **메트릭 & 자동 튜닝**: 파이프라인 완료 시 `_metrics.md`에 결과를 기록한다. 빈출 위반 규칙은 다음 파이프라인의 executor/code-reviewer 프롬프트에 `<tuning-emphasis>` 태그로 강조 주입한다.
+- **정적 분석**: Step 5에서 verifier 호출 전에 Grep/ast-grep 기반 정적 분석을 선행 실행한다. CRITICAL 발견 시 Step 3으로 회귀한다.
 - 산출물은 옵시디언 기능 폴더 + .omc/plans/ 병행 저장.
 - `--step` 옵션으로 단계별 독립 실행 가능. 이전 단계 산출물은 옵시디언에서 자동 참조.
 - `_index.md`는 각 Step 시작/완료 시 자동 업데이트. 20건 이상 또는 차수 종료 시 아카이브.
 </Execution_Policy>
 
 <Agent_Rule_Mapping>
-| 에이전트 | 모델 | ykdev-rules.md 참조 섹션 |
-|---------|------|------------------------|
-| analyst | opus | common + planner |
-| planner | opus | common + planner |
-| architect | opus | common + planner |
-| critic | opus | common + planner + reviewer |
-| executor | opus/sonnet/haiku | common + executor |
-| code-reviewer | opus | common + reviewer |
-| verifier | sonnet | (규칙 참조 없음, 빌드/테스트만) |
+| 에이전트 | 모델 | ykdev-rules.md 참조 섹션 | 추가 주입 태그 |
+|---------|------|------------------------|--------------|
+| analyst | opus | common + planner | experience-replay |
+| planner | opus | common + planner | experience-replay |
+| architect | opus | common + planner | experience-replay |
+| critic | opus | common + planner + reviewer | experience-replay |
+| executor | opus/sonnet/haiku | common + executor | context-chain, code-template, tuning-emphasis |
+| code-reviewer | opus | common + reviewer | tuning-emphasis |
+| verifier | sonnet | (규칙 참조 없음, 빌드/테스트만) | static-analysis-result |
 </Agent_Rule_Mapping>
+
+<Tag_Injection_Reference>
+서브에이전트 프롬프트에 주입하는 태그 목록과 출처:
+
+| 태그 | 내용 | 생성 시점 | 주입 대상 |
+|------|------|-----------|-----------|
+| `<ykdev-rules>` | ykdev-rules.md 전체 | Step 0 | 전체 (verifier 제외) |
+| `<ref-documents>` | REF 문서 내용 | Step 0 | 전체 (verifier 제외) |
+| `<experience-replay>` | 유사 기능 위반 이력 + 구현 패턴 | Step 1 | analyst, planner, architect, critic |
+| `<context-chain>` | 이전 Step 핵심 판단 누적 | 매 Step | executor |
+| `<code-template>` | 신규 파일 스켈레톤 템플릿 | Step 3 | executor (신규 파일 생성 시) |
+| `<tuning-emphasis>` | 빈출 위반 규칙 강조 | Step 0 | executor, code-reviewer |
+| `<static-analysis-result>` | 정적 분석 결과 | Step 5 | verifier |
+</Tag_Injection_Reference>
 
 <Examples>
 <Good>
@@ -524,19 +760,32 @@ Why bad: 잘못된 계획으로 개발하면 전부 다시 해야 함.
 
 code-reviewer와 executor를 같은 컨텍스트에서 실행.
 Why bad: 자기가 쓴 코드를 자기가 리뷰하면 객관성이 없음.
+
+메트릭을 기록하지 않고 파이프라인 완료 처리.
+Why bad: 자동 튜닝 데이터가 누적되지 않아 반복 위반이 계속됨.
+
+context-chain.md를 업데이트하지 않고 다음 Step으로 넘어감.
+Why bad: 다음 Step의 에이전트가 이전 판단의 맥락을 잃어 불일치 발생.
 </Bad>
 </Examples>
 
 <Final_Checklist>
 - [ ] Step 0에서 ykdev-rules.md 전체 Read 완료 (${RULES_CONTENT} 보관)
 - [ ] 작업 유형별 REF 문서 Read 완료 (${REF_CONTENT} 보관)
+- [ ] _metrics.md 로드 및 자동 튜닝 규칙 추출 완료 (${TUNING_RULES} 보관)
 - [ ] 각 서브에이전트 프롬프트에 <ykdev-rules> + <ref-documents> 태그로 내용 직접 주입
+- [ ] Step 1에서 과거 유사 기능 검색 (Experience Replay) 실행
 - [ ] 기능 폴더 생성 완료
+- [ ] context-chain.md 생성 및 매 Step 업데이트
 - [ ] 각 단계별 산출물 저장 완료 (옵시디언 + .omc/plans/)
+- [ ] 신규 파일 생성 시 templates/ 스켈레톤 활용
 - [ ] Step 2 후 사용자 승인 획득
 - [ ] Step 4 리뷰에서 CRITICAL/HIGH 모두 해소
+- [ ] Step 5 정적 분석 통과 (Grep/ast-grep 기반)
 - [ ] Step 5 빌드/테스트 통과
+- [ ] Step 5 영향 범위 교차 검증 완료
 - [ ] Step 6 SVN 커밋 완료 (--skip-commit 시 제외) — 05-commit.md에 리비전 기록
 - [ ] summary.md 생성 완료
 - [ ] _index.md 업데이트 완료
+- [ ] _metrics.md 업데이트 완료 (메트릭 기록 + 자동 튜닝 재계산)
 </Final_Checklist>
