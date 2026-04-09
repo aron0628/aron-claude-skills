@@ -85,11 +85,12 @@ templates:
    - DB 작업: REF-01, REF-03
    - 풀스택(백엔드+프론트엔드): REF-01~07 전부
    REF 문서는 `<ref-documents>` 태그로 서브에이전트 프롬프트에 주입
-4. **메트릭 & 자동 튜닝 로드 (메인 오케스트레이터가 직접 수행)**:
-   - `{obsidian_base}/_metrics.md`가 존재하면 Read
-   - "자동 튜닝 현황" 섹션에서 **강조 주입 대상 규칙**을 추출하여 `${TUNING_RULES}`에 보관
-   - 이후 executor/code-reviewer 프롬프트에 `<tuning-emphasis>` 태그로 주입
-   - 파일 미존재 시 `templates/metrics.md.tmpl` 기반으로 초기 생성
+4. **[필수] 메트릭 & 자동 튜닝 로드 (메인 오케스트레이터가 직접 수행 — 이 단계를 건너뛰지 마라)**:
+   - 메트릭 파일 경로: `/Users/aron/Library/Mobile Documents/iCloud~md~obsidian/Documents/01. Projects/SunnyYK-ERP/_metrics.md`
+   - 위 경로의 파일을 Read 시도한다.
+   - **파일이 존재하면**: "자동 튜닝 현황" 섹션에서 **강조 주입 대상 규칙**을 추출하여 `${TUNING_RULES}`에 보관
+   - **파일이 존재하지 않으면 (Read 실패 시)**: `~/.claude/skills/ykdev/templates/metrics.md.tmpl`을 Read한 뒤, 그 내용을 위 메트릭 파일 경로에 Write하여 초기 생성한다. 생성 후 `${TUNING_RULES}`는 빈 값으로 설정한다.
+   - 이후 executor/code-reviewer 프롬프트에 `<tuning-emphasis>` 태그로 `${TUNING_RULES}` 주입
 5. 기능 폴더 결정 (3뎁스 기준 분리):
    PDF/이미지 문서의 헤더에서 **3뎁스(x.x.x) 번호**를 기능 분리 기준으로 사용한다.
    - 문서 헤더 형식: `{1뎁스}. {모듈} > {1뎁스}.{2뎁스}.{3뎁스} {분류} > {기능명}`

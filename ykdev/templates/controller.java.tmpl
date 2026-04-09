@@ -1,9 +1,10 @@
 package sunnyyk.erp.web.controller.${domain_lower};
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import mobile.factory.RequestDataSet;
 import mobile.factory.util.ResponseUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -11,7 +12,6 @@ import org.springframework.web.servlet.ModelAndView;
 import sunnyyk.erp.common.service.web.${domain_lower}.${DOMAIN}${MENU}Service;
 import sunnyyk.erp.web.core.spring.DefaultController;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,13 +23,13 @@ import java.util.Map;
  * @author ${author}
  * @date ${date}
  */
-@Slf4j
-@RequiredArgsConstructor
 @Controller(value = "${domain_lower}${menu}Controller")
 @RequestMapping(value = "/${domain_lower}")
 public class ${DOMAIN}${MENU}Controller extends DefaultController {
+	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
-	private final ${DOMAIN}${MENU}Service ${domain_lower}${menu}Service;
+	@Autowired
+	${DOMAIN}${MENU}Service ${domain_lower}${menu}Service;
 
 	/**
 	 * 페이지 이동
@@ -46,43 +46,11 @@ public class ${DOMAIN}${MENU}Controller extends DefaultController {
 	 */
 	@RequestMapping(value = "/${domain_lower}${menu}/search", method = RequestMethod.GET)
 	public ModelAndView search(RequestDataSet dataSet) throws Exception {
-		// TODO: 필수 파라미터 검증 — 필요한 필드 추가
-		// String[] notBlankField = new String[] { "required_field" };
-		// dataSet.requiredFieldCheck(notBlankField);
+		String[] notBlankField = new String[] {};
+		dataSet.requiredFieldCheck(notBlankField);
 
 		List<Map<String, Object>> list = ${domain_lower}${menu}Service.selectList(dataSet.inGetMap());
 
-		Map<String, Object> result = new HashMap<>();
-		result.put("total_cnt", list.size());
-		result.put("list", list);
-
-		return dataSet.resultToJSON(ResponseUtil.successResult(result));
+		return dataSet.resultToJSON(ResponseUtil.successResult(list));
 	}
-
-	/**
-	 * 상세 조회
-	 */
-	@RequestMapping(value = "/${domain_lower}${menu}/detail", method = RequestMethod.GET)
-	public ModelAndView detail(RequestDataSet dataSet) throws Exception {
-		String[] notBlankField = new String[] { /* TODO: PK 필드 */ };
-		dataSet.requiredFieldCheck(notBlankField);
-
-		Map<String, Object> detail = ${domain_lower}${menu}Service.selectDetail(dataSet.inGetMap());
-
-		return dataSet.resultToJSON(ResponseUtil.successResult(detail));
-	}
-
-	/**
-	 * 저장 (등록/수정/삭제)
-	 */
-	@RequestMapping(value = "/${domain_lower}${menu}/save", method = RequestMethod.POST)
-	public ModelAndView save(RequestDataSet dataSet) throws Exception {
-		String[] notBlankField = new String[] { /* TODO: 필수 필드 */ };
-		dataSet.requiredFieldCheck(notBlankField);
-
-		${domain_lower}${menu}Service.save(dataSet.inGetMap());
-
-		return dataSet.resultToJSON(ResponseUtil.successResult());
-	}
-
 } //:)--

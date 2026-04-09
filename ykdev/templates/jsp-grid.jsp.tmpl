@@ -1,109 +1,105 @@
-<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-<%@ include file="/WEB-INF/jsp/common/auiHeader.jsp" %>
-<!-- ${description} -->
-<div class="content-body">
+<%@ page contentType="text/html;charset=utf-8" language="java"%><jsp:include page="/WEB-INF/jsp/common/commonForAll.jsp"/><%@ taglib prefix="c" uri="http://java.sun.com/jstl/core_rt" %><%@ taglib prefix="fn" uri="http://java.sun.com/jsp/jstl/functions" %><%@ taglib prefix="fmt" uri="http://java.sun.com/jsp/jstl/fmt" %><%@ taglib uri="http://www.springframework.org/tags" prefix="spring" %><%@ taglib uri="http://www.springframework.org/tags/form" prefix="form"%>
+<%------------------------------------------------------------------------------------------------------------------
+-- 업   무 : ${description}
+-- 화면코드 : ${DOMAIN}${MENU}
+-- 작성자 : ${author}
+-- 최초 작성일 : ${date}
+------------------------------------------------------------------------------------------------------------------%>
+<!DOCTYPE html>
+<html>
+<head>
+	<jsp:include page="/WEB-INF/jsp/common/auiHeader.jsp"/>
+	<script type="text/javascript">
+		var auiGrid;
 
-	<!-- 검색 영역 -->
-	<div class="search-wrap">
-		<div class="search-inner">
-			<table class="search-tbl">
-				<colgroup>
-					<col width="80px">
-					<col width="">
-					<col width="80px">
-					<col width="">
-				</colgroup>
-				<tr>
-					<!-- TODO: 검색 조건 추가 -->
-					<th>검색조건</th>
-					<td>
-						<input type="text" name="s_keyword" class="input-text" />
-					</td>
-					<th>기간</th>
-					<td>
-						<input type="text" name="s_start_dt" class="datepicker input-text width-100" />
-						~
-						<input type="text" name="s_end_dt" class="datepicker input-text width-100" />
-					</td>
-				</tr>
-			</table>
-		</div>
-	</div>
-
-	<!-- 그리드 영역 -->
-	<div class="grid-wrap">
-		<div class="grid-header">
-			<span class="grid-title"><!-- TODO: 그리드 제목 --></span>
-			<span class="grid-count">총 <strong id="totalCnt">0</strong>건</span>
-		</div>
-		<div id="auiGrid" style="width:100%;"></div>
-	</div>
-
-</div>
-
-<script type="text/javascript">
-(function () {
-
-	// ========== 그리드 설정 ==========
-	var myGrid;
-
-	var columnLayout = [
-		// TODO: 컬럼 레이아웃 정의
-		// { dataField: "column_name", headerText: "컬럼명", width: 120 },
-		// { dataField: "amount", headerText: "금액", width: 100, dataType: "numeric", formatString: "#,##0" },
-		// { dataField: "date_field", headerText: "일자", width: 100, dataType: "date", formatString: "yyyy-mm-dd" },
-	];
-
-	var gridProps = {
-		headerHeight: 30,
-		rowHeight: 28,
-		showRowNumColumn: true,
-		showRowCheckColumn: false,   // TODO: 체크박스 필요 시 true
-		editable: false,             // TODO: 편집 필요 시 true
-		selectionMode: "singleRow",
-		noDataMessage: "데이터가 없습니다.",
-		// showFooter: false,        // TODO: 합계 필요 시 true
-	};
-
-	function createAUIGrid() {
-		myGrid = AUIGrid.create("#auiGrid", columnLayout, gridProps);
-
-		// TODO: 이벤트 바인딩
-		// AUIGrid.bind(myGrid, "cellClick", function (event) { });
-		// AUIGrid.bind(myGrid, "cellEditEnd", function (event) { });
-	}
-
-	// ========== 조회 ==========
-	function goSearch() {
-		$M.goNextPageAjax("/${domain_lower}/${domain_lower}${menu}/search", function (data) {
-			AUIGrid.setGridData(myGrid, data.list);
-			$M.setValue("totalCnt", data.total_cnt);
+		$(document).ready(function() {
+			createAUIGrid();
+			goSearch();
 		});
-	}
 
-	// ========== 저장 ==========
-	// function goSave() {
-	//     $M.goNextPageAjaxPost("/${domain_lower}/${domain_lower}${menu}/save", function (data) {
-	//         $M.alertMsg("저장되었습니다.");
-	//         goSearch();
-	//     });
-	// }
+		function createAUIGrid() {
+			var gridPros = {
+				rowIdField : "_$uid",
+				showRowNumColumn : true,
+				editable : false,
+			};
+			var columnLayout = [
+				// TODO: 컬럼 레이아웃 정의
+				// { headerText:"컬럼명", dataField:"field_name", width:"20%", style:"aui-left" },
+			];
+			auiGrid = AUIGrid.create("#auiGrid", columnLayout, gridPros);
+		}
 
-	// ========== 팝업 호출 ==========
-	// function openPopup(param) {
-	//     var option = { width: 800, height: 600 };
-	//     $M.openWindow("/${domain_lower}/${domain_lower}${menu}p01", param, option);
-	// }
-
-	// ========== 초기화 ==========
-	$(function () {
-		createAUIGrid();
-		goSearch();
-	});
-
-	// ========== 외부 함수 ==========
-	// 팝업 콜백 등 외부에서 호출해야 하는 함수
-	// window.callbackPopup = function (data) { goSearch(); };
-
-})();
-</script>
+		// 조회
+		function goSearch() {
+			var params = {};
+			$M.goNextPageAjax(this_page + "/search", $M.toGetParam(params), {method:'get'},
+				function(result) {
+					if(result.success) {
+						$("#total_cnt").html(result.total_cnt);
+						AUIGrid.setGridData(auiGrid, result.list);
+					}
+				}
+			);
+		}
+	</script>
+</head>
+<body>
+<form id="main_form" name="main_form">
+<div class="layout-box">
+<!-- contents 전체 영역 -->
+	<div class="content-wrap">
+		<div class="content-box">
+	<!-- 메인 타이틀 -->
+			<div class="main-title">
+				<jsp:include page="/WEB-INF/jsp/common/menuNavi.jsp"/>
+			</div>
+	<!-- /메인 타이틀 -->
+			<div class="contents">
+				<!-- 검색 조건 영역 -->
+				<%--
+				<div class="search-wrap">
+					<table class="table">
+						<colgroup>
+							<col width="100px"><col width=""><col width="100px"><col width="">
+						</colgroup>
+						<tbody>
+							<tr>
+								<th class="text-right">검색조건</th>
+								<td>
+									<input type="text" class="form-control" id="s_keyword" name="s_keyword">
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+				--%>
+				<!-- 그리드 타이틀, 컨트롤 영역 -->
+				<div class="title-wrap mt10">
+					<h4>조회결과</h4>
+					<div class="btn-group">
+						<div class="right">
+							<jsp:include page="/WEB-INF/jsp/common/buttonAuth.jsp"><jsp:param name="pos" value="TOP_R"/></jsp:include>
+						</div>
+					</div>
+				</div>
+				<!-- /그리드 타이틀, 컨트롤 영역 -->
+				<div id="auiGrid" style="margin-top: 5px; height: 555px;"></div>
+				<!-- 그리드 서머리, 컨트롤 영역 -->
+				<div class="btn-group mt5">
+					<div class="left">
+						총 <strong class="text-primary" id="total_cnt">0</strong>건
+					</div>
+					<div class="right">
+						<jsp:include page="/WEB-INF/jsp/common/buttonAuth.jsp"><jsp:param name="pos" value="BOM_R"/></jsp:include>
+					</div>
+				</div>
+			</div>
+		</div>
+		<jsp:include page="/WEB-INF/jsp/common/footer.jsp"/>
+	</div>
+<!-- /contents 전체 영역 -->
+</div>
+</form>
+</body>
+</html>
